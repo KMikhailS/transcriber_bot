@@ -1,0 +1,145 @@
+import logging
+import os
+import tempfile
+
+import httpx
+
+from bot.config import MAX_API_BASE_URL, MAX_BOT_TOKEN, POLLING_TIMEOUT
+
+logger = logging.getLogger(__name__)
+
+
+class MaxBotAPI:
+    """HTTP-клиент для Max Bot API (https://dev.max.ru)."""
+
+    def __init__(self) -> None:
+        self._token = MAX_BOT_TOKEN
+        self._base = MAX_API_BASE_URL
+        self._client = httpx.Client(timeout=POLLING_TIMEOUT + 10)
+        self._marker: int | None = None
+
+    # ── helpers ──────────────────────────────────────────────
+
+    def _params(self, **extra: object) -> dict:
+        """Базовые query-параметры с токеном."""
+        params: dict = {"access_token": self._token}
+        params.update({k: v for k, v in extra.items() if v is not None})
+        return params
+
+    def _url(self, path: str) -> str:
+        return f"{self._base}{path}"
+
+    # ── long polling ─────────────────────────────────────────
+
+    def get_updates(self) -> list[dict]:
+        """Получить новые обновления (long polling)."""
+        params = self._params(
+            timeout=POLLING_TIMEOUT,
+            marker=self._marker,
+            types="message_created",
+        )
+        try:
+            resp = self._client.get(self._url("/updates"), params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            updates = data.get("updates", [])
+            if data.get("marker"):
+                self._marker = data["marker"]
+            return updates
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка при получении обновлений: %s", exc)
+            return []
+
+    # ── сообщения ────────────────────────────────────────────
+
+    def send_message(self, chat_id: int, text: str) -> dict | None:
+        """Отправить текстовое сообщение в чат."""
+        params = self._params(chat_id=chat_id)
+        body = {"text": text}
+        try:
+            resp = self._client.post(
+                self._url("/messages"), params=params, json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка отправки сообщения: %s", exc)
+            return None
+
+    # ── работа с файлами ─────────────────────────────────────
+
+    def download_file(self, url: str, dest_dir: str | None = None) -> str:
+        """Скачать файл по URL и вернуть путь к временному файлу."""
+        if dest_dir is None:
+            dest_dir = tempfile.mkdtemp(prefix="max_audio_")
+
+        # Добавляем токен, если URL относительный
+        download_url = url
+        if not url.startswith("http"):
+            download_url = self._url(url)
+
+        resp = self._client.get(
+            download_url, params=self._params(), follow_redirects=True,
+        )
+        resp.raise_for_status()
+
+        # Определяем имя файла из заголовков или URL
+        filename = _extract_filename(resp, url)
+        filepath = os.path.join(dest_dir, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(resp.content)
+
+        logger.info("Файл скачан: %s (%d байт)", filepath, len(resp.content))
+        return filepath
+
+    def upload_file(self, file_path: str) -> dict | None:
+        """Загрузить файл на сервер Max и вернуть данные вложения."""
+        params = self._params(type="file")
+        try:
+            with open(file_path, "rb") as f:
+                resp = self._client.post(
+                    self._url("/uploads"),
+                    params=params,
+                    files={"data": (os.path.basename(file_path), f)},
+                )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка загрузки файла: %s", exc)
+            return None
+
+    def send_file(self, chat_id: int, file_path: str) -> dict | None:
+        """Загрузить файл и отправить его в чат."""
+        upload_result = self.upload_file(file_path)
+        if not upload_result:
+            return None
+
+        # В ответе upload приходит объект вложения
+        params = self._params(chat_id=chat_id)
+        body = {
+            "text": "📄 Результат транскрибации",
+            "attachments": [upload_result],
+        }
+        try:
+            resp = self._client.post(
+                self._url("/messages"), params=params, json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка отправки файла: %s", exc)
+            return None
+
+    def close(self) -> None:
+        self._client.close()
+
+
+def _extract_filename(resp: httpx.Response, url: str) -> str:
+    """Извлечь имя файла из Content-Disposition или URL."""
+    cd = resp.headers.get("content-disposition", "")
+    if "filename=" in cd:
+        return cd.split("filename=")[-1].strip('" ')
+    # Берём последнюю часть URL без query-параметров
+    basename = url.split("?")[0].split("/")[-1]
+    return basename if basename else "audio_file"
