@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+import time
 
 import httpx
 
@@ -149,17 +150,39 @@ class MaxBotAPI:
             "text": " ",
             "attachments": [attachment],
         }
-        try:
-            resp = self._client.post(
-                self._url("/messages"), params=params, json=body,
-            )
-            if resp.status_code != 200:
-                logger.error("Ответ сервера (%d): %s", resp.status_code, resp.text)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPError as exc:
-            logger.error("Ошибка отправки файла: %s", exc)
-            return None
+
+        # Повторные попытки — сервер может не успеть обработать файл
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = self._client.post(
+                    self._url("/messages"), params=params, json=body,
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+
+                error_body = resp.text
+                logger.warning(
+                    "Попытка %d/%d — ответ %d: %s",
+                    attempt, max_retries, resp.status_code, error_body,
+                )
+
+                # Если файл ещё не обработан — ждём и пробуем снова
+                if "attachment.not.ready" in error_body and attempt < max_retries:
+                    delay = attempt * 2  # 2, 4, 6, 8 секунд
+                    logger.info("Файл ещё обрабатывается, жду %d сек...", delay)
+                    time.sleep(delay)
+                    continue
+
+                # Другая ошибка — не повторяем
+                resp.raise_for_status()
+
+            except httpx.HTTPError as exc:
+                logger.error("Ошибка отправки файла: %s", exc)
+                return None
+
+        logger.error("Не удалось отправить файл после %d попыток", max_retries)
+        return None
 
     def close(self) -> None:
         self._client.close()
