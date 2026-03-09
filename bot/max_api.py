@@ -133,24 +133,28 @@ class MaxBotAPI:
             return None
 
         # Формируем вложение в формате Max API
-        token = upload_result.get("token")
-        if token:
-            attachment = {"type": "file", "payload": {"token": token}}
-        else:
-            # Если токен не вернулся — пробуем использовать весь ответ
-            attachment = upload_result
+        attachment = {
+            "type": "file",
+            "payload": {
+                "token": upload_result.get("token"),
+            },
+        }
+        if upload_result.get("fileId"):
+            attachment["payload"]["fileId"] = upload_result["fileId"]
 
         logger.info("Отправляю вложение: %s", attachment)
 
         params = self._params(chat_id=chat_id)
         body = {
-            "text": "📄 Результат транскрибации",
+            "text": " ",
             "attachments": [attachment],
         }
         try:
             resp = self._client.post(
                 self._url("/messages"), params=params, json=body,
             )
+            if resp.status_code != 200:
+                logger.error("Ответ сервера (%d): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPError as exc:

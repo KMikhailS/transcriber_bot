@@ -112,8 +112,7 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
         else:
-            # Если не удалось отправить файл — отправляем текстом
-            api.send_message(chat_id, f"📝 Транскрипция:\n\n{text}")
+            api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
     except TranscriptionError as exc:
         logger.error("Ошибка транскрибации: %s", exc)
