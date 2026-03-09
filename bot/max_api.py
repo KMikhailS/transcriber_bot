@@ -94,17 +94,34 @@ class MaxBotAPI:
         return filepath
 
     def upload_file(self, file_path: str) -> dict | None:
-        """Загрузить файл на сервер Max и вернуть данные вложения."""
+        """Загрузить файл на сервер Max. Возвращает ответ API с URL/token."""
+        # Шаг 1: получить URL для загрузки
         params = self._params(type="file")
+        try:
+            resp = self._client.post(self._url("/uploads"), params=params)
+            resp.raise_for_status()
+            upload_info = resp.json()
+            logger.info("Upload info: %s", upload_info)
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка получения URL загрузки: %s", exc)
+            return None
+
+        upload_url = upload_info.get("url")
+        if not upload_url:
+            logger.error("Нет URL в ответе /uploads: %s", upload_info)
+            return None
+
+        # Шаг 2: загрузить файл по полученному URL
         try:
             with open(file_path, "rb") as f:
                 resp = self._client.post(
-                    self._url("/uploads"),
-                    params=params,
+                    upload_url,
                     files={"data": (os.path.basename(file_path), f)},
                 )
             resp.raise_for_status()
-            return resp.json()
+            file_info = resp.json()
+            logger.info("File upload result: %s", file_info)
+            return file_info
         except httpx.HTTPError as exc:
             logger.error("Ошибка загрузки файла: %s", exc)
             return None
@@ -115,11 +132,20 @@ class MaxBotAPI:
         if not upload_result:
             return None
 
-        # В ответе upload приходит объект вложения
+        # Формируем вложение в формате Max API
+        token = upload_result.get("token")
+        if token:
+            attachment = {"type": "file", "payload": {"token": token}}
+        else:
+            # Если токен не вернулся — пробуем использовать весь ответ
+            attachment = upload_result
+
+        logger.info("Отправляю вложение: %s", attachment)
+
         params = self._params(chat_id=chat_id)
         body = {
             "text": "📄 Результат транскрибации",
-            "attachments": [upload_result],
+            "attachments": [attachment],
         }
         try:
             resp = self._client.post(
@@ -139,7 +165,13 @@ def _extract_filename(resp: httpx.Response, url: str) -> str:
     """Извлечь имя файла из Content-Disposition или URL."""
     cd = resp.headers.get("content-disposition", "")
     if "filename=" in cd:
-        return cd.split("filename=")[-1].strip('" ')
+        # Парсим filename из Content-Disposition, игнорируя filename* (RFC 5987)
+        for part in cd.split(";"):
+            part = part.strip()
+            if part.startswith("filename=") and not part.startswith("filename*="):
+                name = part.split("=", 1)[1].strip('" ')
+                if name:
+                    return name
     # Берём последнюю часть URL без query-параметров
     basename = url.split("?")[0].split("/")[-1]
     return basename if basename else "audio_file"
