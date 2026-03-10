@@ -27,7 +27,7 @@ def _get_pipeline() -> Pipeline:
         logger.info("Загружаю модель pyannote для диаризации...")
         _pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            token=HF_TOKEN,
+            use_auth_token=HF_TOKEN,
         )
         logger.info("Модель pyannote загружена")
     return _pipeline
