@@ -8,8 +8,9 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Сначала ставим torch CPU-версию (меньше размер, GPU не нужен)
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Сначала ставим torch CPU-версию с фиксированными версиями
+# (pyannote.audio 3.3.2 несовместим с torchaudio >= 2.5, где убрали AudioMetaData)
+RUN pip install --no-cache-dir torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
