@@ -7,6 +7,7 @@ load_dotenv()
 
 MAX_BOT_TOKEN = os.getenv("MAX_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+HF_TOKEN = os.getenv("HF_TOKEN", "")  # HuggingFace токен для pyannote (диаризация)
 
 # Max Bot API
 MAX_API_BASE_URL = "https://botapi.max.ru"
@@ -26,3 +27,5 @@ def validate_config() -> None:
         sys.exit("Ошибка: переменная MAX_BOT_TOKEN не задана")
     if not OPENAI_API_KEY:
         sys.exit("Ошибка: переменная OPENAI_API_KEY не задана")
+    if not HF_TOKEN:
+        sys.exit("Ошибка: переменная HF_TOKEN не задана (нужна для диаризации, получите на huggingface.co)")
