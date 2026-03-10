@@ -48,9 +48,9 @@ def _transcribe_single(file_path: str) -> list[TranscriptionSegment]:
     segments: list[TranscriptionSegment] = []
     for seg in response.segments or []:
         segments.append(TranscriptionSegment(
-            start=seg["start"],
-            end=seg["end"],
-            text=seg["text"].strip(),
+            start=seg.start,
+            end=seg.end,
+            text=seg.text.strip(),
         ))
     return segments
 
