@@ -3,4 +3,5 @@ openai==1.58.1
 python-dotenv==1.0.1
 pydub==0.25.1
 pyannote.audio==3.3.2
+huggingface_hub<1.0
 # torch и torchaudio устанавливаются в Dockerfile отдельно (CPU-версия)
