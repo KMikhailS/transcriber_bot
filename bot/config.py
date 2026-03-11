@@ -14,6 +14,7 @@ POLLING_TIMEOUT = 30  # секунд
 
 # Whisper
 WHISPER_MODEL = "whisper-1"
+WHISPER_LANGUAGE = "ru"  # явно указываем язык — снижает галлюцинации
 MAX_FILE_SIZE_MB = 24  # лимит Whisper 25 МБ, берём с запасом
 SUPPORTED_AUDIO_EXTENSIONS = {
     ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg",
