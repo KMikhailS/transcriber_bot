@@ -110,8 +110,9 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
             api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
             return
 
-        # 3. Сохраняем результат в .txt
-        txt_path = os.path.join(tmp_dir, "transcription.txt")
+        # 3. Сохраняем результат в .txt (имя файла совпадает с аудио)
+        audio_stem = os.path.splitext(os.path.basename(audio_path))[0]
+        txt_path = os.path.join(tmp_dir, audio_stem + ".txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(text)
 
@@ -123,6 +124,9 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         result = api.send_file(chat_id, txt_path)
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
+            # Если текст короткий — дублируем его сообщением в чат
+            if len(text) < 1500:
+                api.send_message(chat_id, text)
             if status_mid:
                 api.edit_message(status_mid, "✅ Транскрибация завершена!")
         else:

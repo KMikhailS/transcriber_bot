@@ -28,5 +28,6 @@ tmp/
 *.tmp
 
 CLAUDE_RULES.md
+CLAUDE.md
 .env.example
 tasks
