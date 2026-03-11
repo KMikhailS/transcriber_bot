@@ -2,12 +2,18 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 
 from bot.formatter import format_text
 from bot.max_api import MaxBotAPI
+from bot.summarizer import summarize_text
 from bot.transcriber import TranscriptionError, transcribe_audio
 
 logger = logging.getLogger(__name__)
+
+# Хранилище контекста транскрибации для кнопки "Сделать саммари"
+# Ключ: callback payload (уникальный ID), значение: (text, audio_stem)
+_summary_context: dict[str, tuple[str, str]] = {}
 
 WELCOME_TEXT = (
     "👋 Привет! Я Стенограф — бот для расшифровки аудио в текст.\n\n"
@@ -34,6 +40,11 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
         chat_id = update.get("chat_id")
         if chat_id:
             api.send_message(chat_id, WELCOME_TEXT)
+        return
+
+    # Обработка нажатия inline-кнопки
+    if update.get("update_type") == "message_callback":
+        _handle_callback(api, update)
         return
 
     message = update.get("message")
@@ -145,8 +156,19 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
             # Если текст короткий — дублируем его сообщением в чат
             if len(text) < 1500:
                 api.send_message(chat_id, text)
+
+            # 8. Сохраняем контекст и отправляем кнопку "Сделать саммари"
+            callback_id = uuid.uuid4().hex[:16]
+            _summary_context[callback_id] = (text, audio_stem)
+
             if status_mid:
                 api.edit_message(status_mid, "✅ Транскрибация завершена!")
+
+            api.send_message_with_keyboard(
+                chat_id,
+                "📝 Хотите получить краткое содержание?",
+                buttons=[[{"type": "callback", "text": "📝 Сделать саммари", "payload": callback_id}]],
+            )
         else:
             api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
@@ -160,6 +182,80 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
 
     finally:
         # 8. Очистка временных файлов
+        _cleanup_tmp(tmp_dir)
+
+
+def _handle_callback(api: MaxBotAPI, update: dict) -> None:
+    """Обработать нажатие inline-кнопки."""
+    callback = update.get("callback", {})
+    callback_id = callback.get("callback_id")
+    payload = callback.get("payload", "")
+
+    # Определяем chat_id из callback
+    message = update.get("message", {})
+    chat_id = (
+        message.get("recipient", {}).get("chat_id")
+        or message.get("chat_id")
+    )
+
+    if not chat_id:
+        logger.warning("Не удалось определить chat_id из callback: %s", json.dumps(update, ensure_ascii=False, default=str))
+        return
+
+    # Отвечаем на callback (убираем "часики" на кнопке)
+    if callback_id:
+        api.answer_callback(callback_id)
+
+    # Проверяем, есть ли контекст для этого payload
+    context = _summary_context.pop(payload, None)
+    if not context:
+        api.send_message(chat_id, "⚠️ Данные для саммари не найдены. Попробуйте отправить аудио ещё раз.")
+        return
+
+    text, audio_stem = context
+    _handle_summary(api, chat_id, text, audio_stem)
+
+
+def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) -> None:
+    """Создать саммари и отправить результат."""
+    status_resp = api.send_message(chat_id, "⏳ Создаю саммари…")
+    status_mid = _extract_message_id(status_resp)
+
+    tmp_dir = tempfile.mkdtemp(prefix="summary_")
+
+    try:
+        summary = summarize_text(text)
+        if not summary:
+            api.send_message(chat_id, "❌ Не удалось создать саммари.")
+            return
+
+        # Сохраняем саммари в файл
+        summary_filename = f"summary_{audio_stem}.txt"
+        summary_path = os.path.join(tmp_dir, summary_filename)
+        with open(summary_path, "w", encoding="utf-8") as f:
+            f.write(summary)
+
+        # Обновляем статус
+        if status_mid:
+            api.edit_message(status_mid, "⏳ Отправляю саммари…")
+
+        # Отправляем файл
+        result = api.send_file(chat_id, summary_path)
+        if result:
+            logger.info("Саммари отправлено в чат %s", chat_id)
+            # Если саммари короткое — дублируем текстом в чат
+            if len(summary) < 1500:
+                api.send_message(chat_id, summary)
+            if status_mid:
+                api.edit_message(status_mid, "✅ Саммари готово!")
+        else:
+            api.send_message(chat_id, "❌ Не удалось отправить файл с саммари.")
+
+    except Exception as exc:
+        logger.exception("Ошибка при создании саммари: %s", exc)
+        api.send_message(chat_id, "❌ Произошла ошибка при создании саммари.")
+
+    finally:
         _cleanup_tmp(tmp_dir)
 
 

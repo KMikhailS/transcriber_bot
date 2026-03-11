@@ -38,7 +38,7 @@ class MaxBotAPI:
         params = self._params(
             timeout=POLLING_TIMEOUT,
             marker=self._marker,
-            types="message_created,bot_started",
+            types="message_created,bot_started,message_callback",
         )
         try:
             resp = self._client.get(self._url("/updates"), params=params)
@@ -66,6 +66,46 @@ class MaxBotAPI:
             return resp.json()
         except httpx.HTTPError as exc:
             logger.error("Ошибка отправки сообщения: %s", exc)
+            return None
+
+    def send_message_with_keyboard(
+        self, chat_id: int, text: str, buttons: list[list[dict]],
+    ) -> dict | None:
+        """Отправить сообщение с inline-клавиатурой."""
+        params = self._params(chat_id=chat_id)
+        body = {
+            "text": text,
+            "attachments": [
+                {
+                    "type": "inline_keyboard",
+                    "payload": {"buttons": buttons},
+                },
+            ],
+        }
+        try:
+            resp = self._client.post(
+                self._url("/messages"), params=params, json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка отправки сообщения с клавиатурой: %s", exc)
+            return None
+
+    def answer_callback(self, callback_id: str, notification: str = "") -> dict | None:
+        """Ответить на callback от inline-кнопки."""
+        params = self._params()
+        body: dict = {"callback_id": callback_id}
+        if notification:
+            body["notification"] = notification
+        try:
+            resp = self._client.post(
+                self._url("/answers"), params=params, json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка ответа на callback: %s", exc)
             return None
 
     def edit_message(self, message_id: str, text: str) -> dict | None:
