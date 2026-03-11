@@ -190,7 +190,7 @@ def _transcribe_single(file_path: str, prompt: str = "") -> str:
     """
     kwargs: dict = {
         "model": WHISPER_MODEL,
-        "language": WHISPER_LANGUAGE,
+        # "language": WHISPER_LANGUAGE,
         "temperature": 0.0,
         "response_format": "verbose_json",
         "timestamp_granularities": ["segment"],
