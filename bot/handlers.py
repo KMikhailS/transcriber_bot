@@ -154,7 +154,7 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
             # Если текст короткий — дублируем его сообщением в чат
-            if len(text) < 1500:
+            if len(text) < 2500:
                 api.send_message(chat_id, text)
 
             # 8. Сохраняем контекст и отправляем кнопку "Сделать саммари"
@@ -244,7 +244,7 @@ def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) ->
         if result:
             logger.info("Саммари отправлено в чат %s", chat_id)
             # Если саммари короткое — дублируем текстом в чат
-            if len(summary) < 1500:
+            if len(summary) < 2500:
                 api.send_message(chat_id, summary)
             if status_mid:
                 api.edit_message(status_mid, "✅ Саммари готово!")
