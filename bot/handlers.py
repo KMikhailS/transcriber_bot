@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 
+from bot.formatter import format_text
 from bot.max_api import MaxBotAPI
 from bot.transcriber import TranscriptionError, transcribe_audio
 
@@ -122,17 +123,22 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
             api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
             return
 
-        # 3. Сохраняем результат в .txt (имя файла совпадает с аудио)
+        # 4. Форматируем текст через Claude
+        if status_mid:
+            api.edit_message(status_mid, "⏳ Форматирую текст…")
+        text = format_text(text)
+
+        # 5. Сохраняем результат в .txt (имя файла совпадает с аудио)
         audio_stem = os.path.splitext(os.path.basename(audio_path))[0]
         txt_path = os.path.join(tmp_dir, audio_stem + ".txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-        # 4. Обновляем статус — отправка файла
+        # 6. Обновляем статус — отправка файла
         if status_mid:
             api.edit_message(status_mid, "⏳ Отправляю результат…")
 
-        # 5. Отправляем файл пользователю
+        # 7. Отправляем файл пользователю
         result = api.send_file(chat_id, txt_path)
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
@@ -153,7 +159,7 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         api.send_message(chat_id, "❌ Произошла ошибка при обработке файла.")
 
     finally:
-        # 6. Очистка временных файлов
+        # 8. Очистка временных файлов
         _cleanup_tmp(tmp_dir)
 
 

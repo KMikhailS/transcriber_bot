@@ -7,6 +7,7 @@ load_dotenv()
 
 MAX_BOT_TOKEN = os.getenv("MAX_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
 # Max Bot API
 MAX_API_BASE_URL = "https://botapi.max.ru"
@@ -33,3 +34,5 @@ def validate_config() -> None:
         sys.exit("Ошибка: переменная MAX_BOT_TOKEN не задана")
     if not OPENAI_API_KEY:
         sys.exit("Ошибка: переменная OPENAI_API_KEY не задана")
+    if not OPENROUTER_API_KEY:
+        sys.exit("Ошибка: переменная OPENROUTER_API_KEY не задана")
