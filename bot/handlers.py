@@ -27,6 +27,13 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
     """Обработать одно обновление от Max API."""
     logger.info("Получено обновление: %s", json.dumps(update, ensure_ascii=False, default=str))
 
+    # Обработка события старта диалога с ботом
+    if update.get("update_type") == "bot_started":
+        chat_id = update.get("chat_id")
+        if chat_id:
+            api.send_message(chat_id, WELCOME_TEXT)
+        return
+
     message = update.get("message")
     if not message:
         logger.warning("Обновление без поля 'message', пропускаю")

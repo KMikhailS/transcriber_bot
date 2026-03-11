@@ -37,7 +37,7 @@ class MaxBotAPI:
         params = self._params(
             timeout=POLLING_TIMEOUT,
             marker=self._marker,
-            types="message_created",
+            types="message_created,bot_started",
         )
         try:
             resp = self._client.get(self._url("/updates"), params=params)
