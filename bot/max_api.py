@@ -94,14 +94,16 @@ class MaxBotAPI:
 
     def answer_callback(self, callback_id: str, notification: str = "") -> dict | None:
         """Ответить на callback от inline-кнопки."""
-        params = self._params()
-        body: dict = {"callback_id": callback_id}
+        params = self._params(callback_id=callback_id)
+        body: dict = {}
         if notification:
             body["notification"] = notification
         try:
             resp = self._client.post(
                 self._url("/answers"), params=params, json=body,
             )
+            if resp.status_code != 200:
+                logger.warning("answer_callback %d: %s", resp.status_code, resp.text)
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPError as exc:
@@ -182,28 +184,43 @@ class MaxBotAPI:
             logger.error("Ошибка загрузки файла: %s", exc)
             return None
 
-    def send_file(self, chat_id: int, file_path: str) -> dict | None:
-        """Загрузить файл и отправить его в чат."""
+    def send_file(
+        self, chat_id: int, file_path: str,
+        text: str = " ",
+        keyboard_buttons: list[list[dict]] | None = None,
+    ) -> dict | None:
+        """Загрузить файл и отправить его в чат.
+
+        keyboard_buttons — если передан, добавляет inline_keyboard к сообщению.
+        """
         upload_result = self.upload_file(file_path)
         if not upload_result:
             return None
 
         # Формируем вложение в формате Max API
-        attachment = {
+        file_attachment = {
             "type": "file",
             "payload": {
                 "token": upload_result.get("token"),
             },
         }
         if upload_result.get("fileId"):
-            attachment["payload"]["fileId"] = upload_result["fileId"]
+            file_attachment["payload"]["fileId"] = upload_result["fileId"]
 
-        logger.info("Отправляю вложение: %s", attachment)
+        attachments: list[dict] = [file_attachment]
+
+        if keyboard_buttons:
+            attachments.append({
+                "type": "inline_keyboard",
+                "payload": {"buttons": keyboard_buttons},
+            })
+
+        logger.info("Отправляю вложение: %s", attachments)
 
         params = self._params(chat_id=chat_id)
         body = {
-            "text": " ",
-            "attachments": [attachment],
+            "text": text,
+            "attachments": attachments,
         }
 
         # Повторные попытки — сервер может не успеть обработать файл

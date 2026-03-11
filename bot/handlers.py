@@ -149,26 +149,21 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         if status_mid:
             api.edit_message(status_mid, "⏳ Отправляю результат…")
 
-        # 7. Отправляем файл пользователю
-        result = api.send_file(chat_id, txt_path)
+        # 7. Сохраняем контекст для кнопки саммари
+        callback_id = uuid.uuid4().hex[:16]
+        _summary_context[callback_id] = (text, audio_stem)
+
+        # 8. Отправляем файл с кнопкой "Получить краткий конспект"
+        summary_button = [[{"type": "callback", "text": "📝 Получить краткий конспект", "payload": callback_id}]]
+        result = api.send_file(chat_id, txt_path, keyboard_buttons=summary_button)
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
             # Если текст короткий — дублируем его сообщением в чат
-            if len(text) < 2500:
+            if len(text) < 4096:
                 api.send_message(chat_id, text)
-
-            # 8. Сохраняем контекст и отправляем кнопку "Сделать саммари"
-            callback_id = uuid.uuid4().hex[:16]
-            _summary_context[callback_id] = (text, audio_stem)
 
             if status_mid:
                 api.edit_message(status_mid, "✅ Транскрибация завершена!")
-
-            api.send_message_with_keyboard(
-                chat_id,
-                "📝 Хотите получить краткое содержание?",
-                buttons=[[{"type": "callback", "text": "📝 Сделать саммари", "payload": callback_id}]],
-            )
         else:
             api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
@@ -244,7 +239,7 @@ def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) ->
         if result:
             logger.info("Саммари отправлено в чат %s", chat_id)
             # Если саммари короткое — дублируем текстом в чат
-            if len(summary) < 2500:
+            if len(summary) < 4096:
                 api.send_message(chat_id, summary)
             if status_mid:
                 api.edit_message(status_mid, "✅ Саммари готово!")
