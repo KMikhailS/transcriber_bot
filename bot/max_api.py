@@ -2,6 +2,7 @@ import logging
 import os
 import tempfile
 import time
+from urllib.parse import unquote
 
 import httpx
 
@@ -212,7 +213,7 @@ def _extract_filename(resp: httpx.Response, url: str) -> str:
             if part.startswith("filename=") and not part.startswith("filename*="):
                 name = part.split("=", 1)[1].strip('" ')
                 if name:
-                    return name
+                    return unquote(name)
     # Берём последнюю часть URL без query-параметров
     basename = url.split("?")[0].split("/")[-1]
-    return basename if basename else "audio_file"
+    return unquote(basename) if basename else "audio_file"

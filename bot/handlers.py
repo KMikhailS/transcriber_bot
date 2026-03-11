@@ -15,7 +15,8 @@ WELCOME_TEXT = (
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga."
 )
 
-PROCESSING_TEXT = "⏳ Транскрибирую аудио… 0%"
+DOWNLOADING_TEXT = "⏳ Скачиваю аудио…"
+PREPARING_TEXT = "⏳ Подготавливаю аудио…"
 
 INVALID_FILE_TEXT = (
     "❌ Пожалуйста, отправьте аудиофайл.\n"
@@ -91,7 +92,7 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         api.send_message(chat_id, "❌ Не удалось получить ссылку на файл.")
         return
 
-    status_resp = api.send_message(chat_id, PROCESSING_TEXT)
+    status_resp = api.send_message(chat_id, DOWNLOADING_TEXT)
     status_mid = _extract_message_id(status_resp)
 
     tmp_dir = tempfile.mkdtemp(prefix="transcriber_")
@@ -110,7 +111,11 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         audio_path = api.download_file(file_url, dest_dir=tmp_dir)
         logger.info("Скачан файл: %s", audio_path)
 
-        # 2. Транскрибируем
+        # 2. Обновляем статус — подготовка аудио (нарезка на чанки)
+        if status_mid:
+            api.edit_message(status_mid, PREPARING_TEXT)
+
+        # 3. Транскрибируем
         text = transcribe_audio(audio_path, on_progress=_report_progress)
 
         if not text.strip():
