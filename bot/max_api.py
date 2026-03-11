@@ -57,7 +57,7 @@ class MaxBotAPI:
     def send_message(self, chat_id: int, text: str) -> dict | None:
         """Отправить текстовое сообщение в чат."""
         params = self._params(chat_id=chat_id)
-        body = {"text": text}
+        body = {"text": text, "format": "markdown"}
         try:
             resp = self._client.post(
                 self._url("/messages"), params=params, json=body,
