@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# ffmpeg нужен для pydub (нарезка аудио на чанки)
+# ffmpeg/ffprobe — нарезка аудио на чанки без перекодирования
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
