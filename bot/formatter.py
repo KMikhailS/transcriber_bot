@@ -2,7 +2,7 @@ import logging
 
 from openai import OpenAI
 
-from bot.config import OPENROUTER_API_KEY
+from bot.config import FORMATTER_MAX_CHARS, OPENROUTER_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,15 @@ _SYSTEM_PROMPT = (
 def format_text(raw_text: str) -> str:
     """Отформатировать текст транскрипции через Claude (OpenRouter).
 
-    При ошибке возвращает исходный текст без изменений (graceful fallback).
+    При ошибке или слишком большом тексте возвращает исходный текст без изменений.
     """
+    if len(raw_text) > FORMATTER_MAX_CHARS:
+        logger.info(
+            "Текст слишком большой (%d символов > %d), форматирование пропущено",
+            len(raw_text), FORMATTER_MAX_CHARS,
+        )
+        return raw_text
+
     try:
         response = _client.chat.completions.create(
             model=_MODEL,
