@@ -67,6 +67,20 @@ class MaxBotAPI:
             logger.error("Ошибка отправки сообщения: %s", exc)
             return None
 
+    def edit_message(self, message_id: str, text: str) -> dict | None:
+        """Редактировать текст существующего сообщения."""
+        params = self._params(message_id=message_id)
+        body = {"text": text}
+        try:
+            resp = self._client.put(
+                self._url("/messages"), params=params, json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            logger.error("Ошибка редактирования сообщения: %s", exc)
+            return None
+
     # ── работа с файлами ─────────────────────────────────────
 
     def download_file(self, url: str, dest_dir: str | None = None) -> str:

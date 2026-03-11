@@ -15,7 +15,7 @@ WELCOME_TEXT = (
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga."
 )
 
-PROCESSING_TEXT = "⏳ Транскрибирую аудио, подождите..."
+PROCESSING_TEXT = "⏳ Транскрибирую аудио… 0%"
 
 INVALID_FILE_TEXT = (
     "❌ Пожалуйста, отправьте аудиофайл.\n"
@@ -84,11 +84,19 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         api.send_message(chat_id, "❌ Не удалось получить ссылку на файл.")
         return
 
-    api.send_message(chat_id, PROCESSING_TEXT)
+    status_resp = api.send_message(chat_id, PROCESSING_TEXT)
+    status_mid = _extract_message_id(status_resp)
 
     tmp_dir = tempfile.mkdtemp(prefix="transcriber_")
     audio_path = None
     txt_path = None
+
+    def _report_progress(current: int, total: int) -> None:
+        """Обновить сообщение-статус с текущим прогрессом."""
+        if status_mid is None:
+            return
+        pct = current * 100 // total
+        api.edit_message(status_mid, f"⏳ Транскрибирую аудио… {pct}%")
 
     try:
         # 1. Скачиваем аудиофайл
@@ -96,7 +104,7 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         logger.info("Скачан файл: %s", audio_path)
 
         # 2. Транскрибируем
-        text = transcribe_audio(audio_path)
+        text = transcribe_audio(audio_path, on_progress=_report_progress)
 
         if not text.strip():
             api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
@@ -107,10 +115,16 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-        # 4. Отправляем файл пользователю
+        # 4. Обновляем статус — отправка файла
+        if status_mid:
+            api.edit_message(status_mid, "⏳ Отправляю результат…")
+
+        # 5. Отправляем файл пользователю
         result = api.send_file(chat_id, txt_path)
         if result:
             logger.info("Транскрипция отправлена в чат %s", chat_id)
+            if status_mid:
+                api.edit_message(status_mid, "✅ Транскрибация завершена!")
         else:
             api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
@@ -123,8 +137,16 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         api.send_message(chat_id, "❌ Произошла ошибка при обработке файла.")
 
     finally:
-        # 5. Очистка временных файлов
+        # 6. Очистка временных файлов
         _cleanup_tmp(tmp_dir)
+
+
+def _extract_message_id(resp: dict | None) -> str | None:
+    """Извлечь mid (идентификатор сообщения) из ответа send_message."""
+    if not resp:
+        return None
+    body = resp.get("message", {}).get("body", {})
+    return body.get("mid")
 
 
 def _cleanup_tmp(tmp_dir: str) -> None:

@@ -15,7 +15,13 @@ POLLING_TIMEOUT = 30  # секунд
 # Whisper
 WHISPER_MODEL = "whisper-1"
 WHISPER_LANGUAGE = "ru"  # явно указываем язык — снижает галлюцинации
+# Пороги для фильтрации «плохих» сегментов (борьба с галлюцинациями)
+WHISPER_NO_SPEECH_THRESHOLD = 0.6     # вероятность «нет речи» выше → отбрасываем
+WHISPER_COMPRESSION_RATIO_THRESHOLD = 2.4  # коэффициент сжатия выше → повторы → отбрасываем
+WHISPER_AVG_LOGPROB_THRESHOLD = -1.0  # средняя уверенность ниже → отбрасываем
+WHISPER_PROMPT_CHARS = 224  # сколько символов конца предыдущего чанка передавать как prompt
 MAX_FILE_SIZE_MB = 24  # лимит Whisper 25 МБ, берём с запасом
+CHUNK_DURATION_MINUTES = 3  # макс. длительность одного чанка (для прогресса)
 SUPPORTED_AUDIO_EXTENSIONS = {
     ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg",
 }

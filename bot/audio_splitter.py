@@ -4,36 +4,45 @@ import tempfile
 
 from pydub import AudioSegment
 
-from bot.config import MAX_FILE_SIZE_MB
+from bot.config import CHUNK_DURATION_MINUTES, MAX_FILE_SIZE_MB
 
 logger = logging.getLogger(__name__)
 
 MAX_CHUNK_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024  # 24 МБ в байтах
+CHUNK_DURATION_MS = CHUNK_DURATION_MINUTES * 60 * 1000  # в миллисекундах
 
 
 def split_audio(file_path: str) -> list[str]:
-    """Разбить аудиофайл на чанки, если он превышает лимит.
+    """Разбить аудиофайл на чанки по размеру или длительности.
 
-    Если файл ≤ MAX_FILE_SIZE_MB — возвращает [file_path].
-    Если файл больше — нарезает на части и возвращает список путей к чанкам.
+    Нарезка происходит, если:
+    - файл > MAX_FILE_SIZE_MB (лимит Whisper API), или
+    - длительность > CHUNK_DURATION_MINUTES (для отслеживания прогресса).
+
+    Если ни одно условие не выполнено — возвращает [file_path].
     """
     file_size = os.path.getsize(file_path)
-
-    if file_size <= MAX_CHUNK_BYTES:
-        logger.info("Файл %s (%d байт) — нарезка не требуется", file_path, file_size)
-        return [file_path]
-
-    logger.info(
-        "Файл %s (%d байт) превышает лимит %d МБ — нарезаю на чанки",
-        file_path, file_size, MAX_FILE_SIZE_MB,
-    )
 
     audio = AudioSegment.from_file(file_path)
     total_duration_ms = len(audio)
 
-    # Вычисляем длительность одного чанка на основе битрейта
-    # chunk_duration = (max_size / file_size) * total_duration
-    num_chunks = (file_size // MAX_CHUNK_BYTES) + 1
+    # Сколько чанков нужно по каждому критерию
+    chunks_by_size = max(1, -(-file_size // MAX_CHUNK_BYTES))        # ceil
+    chunks_by_duration = max(1, -(-total_duration_ms // CHUNK_DURATION_MS))  # ceil
+    num_chunks = max(chunks_by_size, chunks_by_duration)
+
+    if num_chunks <= 1:
+        logger.info(
+            "Файл %s (%d байт, %.0f сек) — нарезка не требуется",
+            file_path, file_size, total_duration_ms / 1000,
+        )
+        return [file_path]
+
+    logger.info(
+        "Файл %s (%d байт, %.0f сек) — нарезаю на %d чанков",
+        file_path, file_size, total_duration_ms / 1000, num_chunks,
+    )
+
     chunk_duration_ms = total_duration_ms // num_chunks
 
     chunk_dir = tempfile.mkdtemp(prefix="audio_chunks_")
