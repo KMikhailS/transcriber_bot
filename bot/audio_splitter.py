@@ -31,6 +31,51 @@ def _get_duration_ms(file_path: str) -> int:
     return int(duration_sec * 1000)
 
 
+def _validate_chunk(file_path: str) -> bool:
+    """Проверить, что аудиочанк можно декодировать.
+
+    Прогоняет файл через ffmpeg с выходом в null.
+    Возвращает True, если файл валиден.
+    """
+    result = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", file_path, "-f", "null", "-"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def _create_chunk(
+    file_path: str,
+    chunk_path: str,
+    start_sec: str,
+    duration_sec: str,
+    *,
+    reencode: bool = False,
+) -> None:
+    """Создать один чанк из исходного файла.
+
+    Args:
+        file_path: путь к исходному аудиофайлу.
+        chunk_path: путь для сохранения чанка.
+        start_sec: время начала в секундах (строка).
+        duration_sec: длительность в секундах (строка).
+        reencode: если True — перекодировать (медленнее, но надёжнее).
+    """
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", start_sec,
+        "-t", duration_sec,
+        "-i", file_path,
+    ]
+    if reencode:
+        cmd += ["-map", "a"]
+    else:
+        cmd += ["-c", "copy"]
+    cmd += ["-loglevel", "error", chunk_path]
+
+    subprocess.run(cmd, check=True)
+
+
 def split_audio(file_path: str) -> list[str]:
     """Разбить аудиофайл на чанки по размеру или длительности.
 
@@ -41,6 +86,7 @@ def split_audio(file_path: str) -> list[str]:
     Если ни одно условие не выполнено — возвращает [file_path].
 
     Использует ffmpeg с -c copy (без перекодирования) для максимальной скорости.
+    Если чанк оказывается битым — пересоздаёт его с перекодированием.
     """
     file_size = os.path.getsize(file_path)
     total_duration_ms = _get_duration_ms(file_path)
@@ -73,21 +119,21 @@ def split_audio(file_path: str) -> list[str]:
         end_ms = min((i + 1) * chunk_duration_ms, total_duration_ms)
         duration_ms = end_ms - start_ms
 
+        start_sec = f"{start_ms / 1000:.3f}"
+        dur_sec = f"{duration_ms / 1000:.3f}"
         chunk_path = os.path.join(chunk_dir, f"chunk_{i:03d}{ext}")
 
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-ss", f"{start_ms / 1000:.3f}",
-                "-t", f"{duration_ms / 1000:.3f}",
-                "-i", file_path,
-                "-c", "copy",
-                "-loglevel", "error",
-                chunk_path,
-            ],
-            check=True,
-        )
+        # Быстрая нарезка без перекодирования
+        _create_chunk(file_path, chunk_path, start_sec, dur_sec)
+
+        # Проверяем валидность; если битый — пересоздаём с перекодированием
+        if not _validate_chunk(chunk_path):
+            logger.warning(
+                "Чанк %d битый после -c copy, пересоздаю с перекодированием",
+                i,
+            )
+            _create_chunk(file_path, chunk_path, start_sec, dur_sec, reencode=True)
+
         chunk_paths.append(chunk_path)
 
         logger.info(

@@ -22,7 +22,8 @@ _SYSTEM_PROMPT = (
     "3. Keep the summary concise but comprehensive — capture all important information.\n"
     "4. Write the summary in the SAME language as the original text.\n"
     "5. Do NOT add information that is not present in the original text.\n"
-    "6. Do NOT add meta-commentary like 'Here is the summary' — return ONLY the summary itself."
+    "6. Do NOT add meta-commentary like 'Here is the summary' — return ONLY the summary itself.\n"
+    "7. Do NOT use markdown tables — use bullet points or lists instead."
 )
 
 

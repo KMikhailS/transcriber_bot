@@ -252,11 +252,22 @@ def transcribe_audio(
     logger.info("Чанков для транскрибации: %d", total)
 
     texts: list[str] = []
+    failed_chunks: list[int] = []
     prev_prompt = ""  # prompt chaining: конец предыдущего чанка
     try:
         for i, chunk_path in enumerate(chunk_paths):
             logger.info("Транскрибирую чанк %d/%d: %s", i + 1, total, chunk_path)
-            text = _transcribe_single(chunk_path, prompt=prev_prompt)
+            try:
+                text = _transcribe_single(chunk_path, prompt=prev_prompt)
+            except Exception as exc:
+                logger.warning(
+                    "Чанк %d/%d не удалось транскрибировать, пропускаю: %s",
+                    i + 1, total, exc,
+                )
+                failed_chunks.append(i + 1)
+                if on_progress is not None:
+                    on_progress(i + 1, total)
+                continue
             texts.append(text)
             logger.info("Чанк %d: получено %d символов", i + 1, len(text))
 
@@ -269,6 +280,15 @@ def transcribe_audio(
         raise TranscriptionError(f"Ошибка при транскрибации: {exc}") from exc
     finally:
         cleanup_chunks(chunk_paths, original_path=file_path)
+
+    if failed_chunks:
+        logger.warning(
+            "Не удалось транскрибировать %d из %d чанков: %s",
+            len(failed_chunks), total, failed_chunks,
+        )
+
+    if not texts:
+        raise TranscriptionError("Ни один чанк не был успешно транскрибирован")
 
     result = " ".join(texts)
     logger.info("Транскрибация завершена: %d символов (до очистки)", len(result))
