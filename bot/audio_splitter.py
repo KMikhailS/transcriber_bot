@@ -132,7 +132,14 @@ def split_audio(file_path: str) -> list[str]:
                 "Чанк %d битый после -c copy, пересоздаю с перекодированием",
                 i,
             )
-            _create_chunk(file_path, chunk_path, start_sec, dur_sec, reencode=True)
+            try:
+                _create_chunk(file_path, chunk_path, start_sec, dur_sec, reencode=True)
+            except subprocess.CalledProcessError:
+                logger.warning(
+                    "Чанк %d: исходный файл повреждён на этом участке, пропускаю",
+                    i,
+                )
+                continue
 
         chunk_paths.append(chunk_path)
 
