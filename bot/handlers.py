@@ -4,6 +4,7 @@ import os
 import tempfile
 import uuid
 
+from bot.database import get_or_create_user
 from bot.formatter import format_text
 from bot.max_api import MaxBotAPI
 from bot.summarizer import summarize_text
@@ -38,7 +39,9 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
     # Обработка события старта диалога с ботом
     if update.get("update_type") == "bot_started":
         chat_id = update.get("chat_id")
+        user = update.get("user", {})
         if chat_id:
+            _register_user(user)
             api.send_message(chat_id, WELCOME_TEXT)
         return
 
@@ -67,6 +70,8 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
     # Проверка на команду /start
     text = body.get("text", "")
     if text.strip() == "/start":
+        sender = message.get("sender", {})
+        _register_user(sender)
         api.send_message(chat_id, WELCOME_TEXT)
         return
 
@@ -260,6 +265,19 @@ def _extract_message_id(resp: dict | None) -> str | None:
         return None
     body = resp.get("message", {}).get("body", {})
     return body.get("mid")
+
+
+def _register_user(user: dict) -> None:
+    """Зарегистрировать пользователя в БД если ещё не существует."""
+    user_id = user.get("user_id")
+    if not user_id:
+        return
+    username = user.get("username")
+    first_name = user.get("name")
+    try:
+        get_or_create_user(user_id, username, first_name)
+    except Exception as exc:
+        logger.error("Ошибка регистрации пользователя %s: %s", user_id, exc)
 
 
 def _cleanup_tmp(tmp_dir: str) -> None:

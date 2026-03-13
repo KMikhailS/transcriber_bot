@@ -4,6 +4,7 @@ import sys
 import time
 
 from bot.config import validate_config
+from bot.database import init_db
 from bot.handlers import handle_update
 from bot.max_api import MaxBotAPI
 
@@ -28,6 +29,9 @@ def main() -> None:
 
     # Валидация конфигурации
     validate_config()
+
+    # Инициализация базы данных
+    init_db()
 
     # Graceful shutdown
     signal.signal(signal.SIGINT, _shutdown)
