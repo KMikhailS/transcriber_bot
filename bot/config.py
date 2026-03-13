@@ -8,6 +8,8 @@ load_dotenv()
 MAX_BOT_TOKEN = os.getenv("MAX_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+YOKASSA_SHOP_ID = os.getenv("YOKASSA_SHOP_ID", "")
+YOKASSA_SECRET_KEY = os.getenv("YOKASSA_SECRET_KEY", "")
 
 # Max Bot API
 MAX_API_BASE_URL = "https://botapi.max.ru"

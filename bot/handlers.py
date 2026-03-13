@@ -4,10 +4,11 @@ import os
 import tempfile
 import uuid
 
-from bot.database import get_or_create_user
+from bot.database import get_or_create_user, get_pending_payment, get_user_balance, mark_payment_paid, save_payment
 from bot.formatter import format_text
 from bot.link_downloader import download_audio_from_url, extract_media_url
 from bot.max_api import MaxBotAPI
+from bot.payment import create_payment, get_payment_status
 from bot.summarizer import summarize_text
 from bot.transcriber import TranscriptionError, transcribe_audio
 
@@ -46,7 +47,7 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
         user = update.get("user", {})
         if chat_id:
             _register_user(user)
-            api.send_message(chat_id, WELCOME_TEXT)
+            _send_welcome(api, chat_id)
         return
 
     # Обработка нажатия inline-кнопки
@@ -76,7 +77,7 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
     if text.strip() == "/start":
         sender = message.get("sender", {})
         _register_user(sender)
-        api.send_message(chat_id, WELCOME_TEXT)
+        _send_welcome(api, chat_id)
         return
 
     # Проверка на ссылку YouTube/Instagram в тексте
@@ -232,18 +233,26 @@ def _process_audio(
         api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
 
+def _send_welcome(api: MaxBotAPI, chat_id: int) -> None:
+    """Отправить приветственное сообщение с кнопкой 'Подписка'."""
+    buttons = [[{"type": "callback", "text": "💳 Подписка", "payload": "sub_info"}]]
+    api.send_message_with_keyboard(chat_id, WELCOME_TEXT, buttons)
+
+
 def _handle_callback(api: MaxBotAPI, update: dict) -> None:
     """Обработать нажатие inline-кнопки."""
     callback = update.get("callback", {})
     callback_id = callback.get("callback_id")
     payload = callback.get("payload", "")
 
-    # Определяем chat_id из callback
+    # Определяем chat_id и user_id из callback
     message = update.get("message", {})
     chat_id = (
         message.get("recipient", {}).get("chat_id")
         or message.get("chat_id")
     )
+    user = update.get("user", {})
+    user_id = user.get("user_id")
 
     if not chat_id:
         logger.warning("Не удалось определить chat_id из callback: %s", json.dumps(update, ensure_ascii=False, default=str))
@@ -253,7 +262,24 @@ def _handle_callback(api: MaxBotAPI, update: dict) -> None:
     if callback_id:
         api.answer_callback(callback_id)
 
-    # Проверяем, есть ли контекст для этого payload
+    # --- Подписка: маршрутизация по payload ---
+    if payload == "sub_info":
+        _handle_sub_info(api, chat_id, user_id)
+        return
+
+    if payload == "sub_pay":
+        _handle_sub_pay(api, chat_id)
+        return
+
+    if payload == "sub_topup":
+        _handle_sub_topup(api, chat_id, user_id)
+        return
+
+    if payload == "sub_back":
+        _send_welcome(api, chat_id)
+        return
+
+    # --- Саммари ---
     context = _summary_context.pop(payload, None)
     if not context:
         api.send_message(chat_id, "⚠️ Данные для саммари не найдены. Попробуйте отправить аудио ещё раз.")
@@ -261,6 +287,64 @@ def _handle_callback(api: MaxBotAPI, update: dict) -> None:
 
     text, audio_stem = context
     _handle_summary(api, chat_id, text, audio_stem)
+
+
+def _handle_sub_info(api: MaxBotAPI, chat_id: int, user_id: int | None) -> None:
+    """Показать баланс пользователя и кнопки оплаты."""
+    # Проверяем pending-платёж перед показом баланса
+    if user_id:
+        pending = get_pending_payment(user_id)
+        if pending:
+            payment_id, amount = pending
+            status = get_payment_status(payment_id)
+            if status == "succeeded":
+                try:
+                    mark_payment_paid(payment_id, user_id, amount)
+                    api.send_message(chat_id, f"✅ Оплата на {amount} руб. прошла успешно! Баланс пополнен.")
+                except Exception as exc:
+                    logger.error("Ошибка зачисления платежа %s: %s", payment_id, exc)
+            elif status == "canceled":
+                logger.info("Платёж %s отменён", payment_id)
+
+    balance = get_user_balance(user_id) if user_id else 0
+    text = f"💰 Ваш текущий баланс: {balance} руб."
+    buttons = [
+        [{"type": "callback", "text": "💳 Оплатить подписку", "payload": "sub_pay"}],
+        [{"type": "callback", "text": "⬅️ Назад", "payload": "sub_back"}],
+    ]
+    api.send_message_with_keyboard(chat_id, text, buttons)
+
+
+def _handle_sub_pay(api: MaxBotAPI, chat_id: int) -> None:
+    """Показать кнопку пополнения на 1000 рублей."""
+    buttons = [
+        [{"type": "callback", "text": "💵 Пополнить на 1000 рублей", "payload": "sub_topup"}],
+        [{"type": "callback", "text": "⬅️ Назад", "payload": "sub_info"}],
+    ]
+    api.send_message_with_keyboard(chat_id, "Выберите сумму пополнения:", buttons)
+
+
+def _handle_sub_topup(api: MaxBotAPI, chat_id: int, user_id: int | None) -> None:
+    """Создать платёж в ЮKassa и показать кнопку-ссылку для оплаты."""
+    api.send_message(chat_id, "⏳ Создаю платёж…")
+
+    result = create_payment(1000, "Пополнение баланса на 1000 руб.")
+    if not result:
+        api.send_message(chat_id, "❌ Не удалось создать платёж. Попробуйте позже.")
+        return
+
+    payment_id, payment_url = result
+
+    if user_id:
+        try:
+            save_payment(payment_id, user_id, 1000)
+        except Exception as exc:
+            logger.error("Ошибка сохранения платежа %s: %s", payment_id, exc)
+
+    buttons = [
+        [{"type": "link", "text": "💳 Оплатить", "url": payment_url}],
+    ]
+    api.send_message_with_keyboard(chat_id, "Нажмите кнопку ниже для оплаты:", buttons)
 
 
 def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) -> None:
