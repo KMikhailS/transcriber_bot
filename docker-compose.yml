@@ -4,7 +4,4 @@ services:
     env_file: .env
     restart: unless-stopped
     volumes:
-      - bot-data:/app/data
-
-volumes:
-  bot-data:
+      - /root/transcriber_data:/app/data

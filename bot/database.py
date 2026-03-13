@@ -28,7 +28,7 @@ def init_db() -> None:
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             code        TEXT    NOT NULL UNIQUE,
             name        TEXT    NOT NULL,
-            balance     INTEGER NOT NULL DEFAULT 0,
+            amount     INTEGER NOT NULL DEFAULT 0,
             active      INTEGER NOT NULL DEFAULT 1,
             createstamp TEXT    NOT NULL,
             changestamp TEXT    NOT NULL
@@ -45,13 +45,25 @@ def init_db() -> None:
             changestamp     TEXT    NOT NULL,
             FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
         );
+
+        CREATE TABLE IF NOT EXISTS selected_subscriptions (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            subscription_id INTEGER NOT NULL,
+            user_id         INTEGER NOT NULL,
+            balance         INTEGER NOT NULL DEFAULT 0,
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            createstamp     TEXT    NOT NULL,
+            changestamp     TEXT    NOT NULL,
+            FOREIGN KEY (subscription_id) REFERENCES subscriptions(id),
+            FOREIGN KEY (user_id) REFERENCES user_info(id)
+        );
     """)
 
     # Создаём стартовую подписку если её ещё нет
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
-        INSERT OR IGNORE INTO subscriptions (code, name, balance, active, createstamp, changestamp)
+        INSERT OR IGNORE INTO subscriptions (code, name, amount, active, createstamp, changestamp)
         VALUES ('start', 'Стартовая', 300, 1, ?, ?)
         """,
         (now, now),
@@ -70,9 +82,10 @@ def get_or_create_user(user_id: int, username: str | None = None, first_name: st
         logger.info("Пользователь %d уже существует", user_id)
         return
 
-    # Получаем id стартовой подписки
-    sub = conn.execute("SELECT id FROM subscriptions WHERE code = 'start'").fetchone()
+    # Получаем стартовую подписку
+    sub = conn.execute("SELECT id, amount FROM subscriptions WHERE code = 'start'").fetchone()
     sub_id = sub["id"] if sub else None
+    sub_balance = sub["amount"] if sub else 0
 
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
@@ -82,5 +95,16 @@ def get_or_create_user(user_id: int, username: str | None = None, first_name: st
         """,
         (user_id, username, first_name, sub_id, now, now),
     )
+
+    # Создаём назначенную подписку с балансом из шаблона
+    if sub_id is not None:
+        conn.execute(
+            """
+            INSERT INTO selected_subscriptions (subscription_id, user_id, balance, is_active, createstamp, changestamp)
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            (sub_id, user_id, sub_balance, now, now),
+        )
+
     conn.commit()
     logger.info("Создан пользователь %d (%s)", user_id, username or "no username")
