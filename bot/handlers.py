@@ -6,6 +6,7 @@ import uuid
 
 from bot.database import get_or_create_user
 from bot.formatter import format_text
+from bot.link_downloader import download_audio_from_url, extract_media_url
 from bot.max_api import MaxBotAPI
 from bot.summarizer import summarize_text
 from bot.transcriber import TranscriptionError, transcribe_audio
@@ -18,17 +19,20 @@ _summary_context: dict[str, tuple[str, str]] = {}
 
 WELCOME_TEXT = (
     "👋 Привет! Я Стенограф — бот для расшифровки аудио в текст.\n\n"
-    "Отправь мне аудиофайл (mp3, wav, ogg, m4a и др.), "
+    "Отправь мне аудиофайл (mp3, wav, ogg, m4a и др.) "
+    "или ссылку на YouTube / Instagram видео, "
     "и я верну текстовый файл с расшифровкой.\n\n"
-    "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga."
+    "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
+    "Ссылки: YouTube, Instagram (Reels, посты с видео)."
 )
 
 DOWNLOADING_TEXT = "⏳ Скачиваю аудио…"
 PREPARING_TEXT = "⏳ Подготавливаю аудио…"
 
 INVALID_FILE_TEXT = (
-    "❌ Пожалуйста, отправьте аудиофайл.\n"
-    "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga."
+    "❌ Пожалуйста, отправьте аудиофайл или ссылку на YouTube / Instagram видео.\n"
+    "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
+    "Ссылки: YouTube, Instagram (Reels, посты с видео)."
 )
 
 
@@ -75,6 +79,12 @@ def handle_update(api: MaxBotAPI, update: dict) -> None:
         api.send_message(chat_id, WELCOME_TEXT)
         return
 
+    # Проверка на ссылку YouTube/Instagram в тексте
+    media_url = extract_media_url(text)
+    if media_url:
+        _handle_url(api, chat_id, media_url)
+        return
+
     # Проверка на наличие вложений (аудиофайл)
     attachments = body.get("attachments", [])
     logger.info("Вложения: %s", json.dumps(attachments, ensure_ascii=False, default=str))
@@ -113,64 +123,12 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
     status_mid = _extract_message_id(status_resp)
 
     tmp_dir = tempfile.mkdtemp(prefix="transcriber_")
-    audio_path = None
-    txt_path = None
-
-    def _report_progress(current: int, total: int) -> None:
-        """Обновить сообщение-статус с текущим прогрессом."""
-        if status_mid is None:
-            return
-        pct = current * 100 // total
-        api.edit_message(status_mid, f"⏳ Транскрибирую аудио… {pct}%")
 
     try:
-        # 1. Скачиваем аудиофайл
         audio_path = api.download_file(file_url, dest_dir=tmp_dir)
         logger.info("Скачан файл: %s", audio_path)
 
-        # 2. Обновляем статус — подготовка аудио (нарезка на чанки)
-        if status_mid:
-            api.edit_message(status_mid, PREPARING_TEXT)
-
-        # 3. Транскрибируем
-        text = transcribe_audio(audio_path, on_progress=_report_progress)
-
-        if not text.strip():
-            api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
-            return
-
-        # 4. Форматируем текст через Claude
-        if status_mid:
-            api.edit_message(status_mid, "⏳ Форматирую текст…")
-        text = format_text(text)
-
-        # 5. Сохраняем результат в .txt (имя файла совпадает с аудио)
-        audio_stem = os.path.splitext(os.path.basename(audio_path))[0]
-        txt_path = os.path.join(tmp_dir, audio_stem + ".txt")
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(text)
-
-        # 6. Обновляем статус — отправка файла
-        if status_mid:
-            api.edit_message(status_mid, "⏳ Отправляю результат…")
-
-        # 7. Сохраняем контекст для кнопки саммари
-        callback_id = uuid.uuid4().hex[:16]
-        _summary_context[callback_id] = (text, audio_stem)
-
-        # 8. Отправляем файл с кнопкой "Получить краткий конспект"
-        summary_button = [[{"type": "callback", "text": "📝 Получить краткий конспект", "payload": callback_id}]]
-        result = api.send_file(chat_id, txt_path, keyboard_buttons=summary_button)
-        if result:
-            logger.info("Транскрипция отправлена в чат %s", chat_id)
-            # Если текст короткий — дублируем его сообщением в чат
-            if len(text) < 4096:
-                api.send_message(chat_id, text)
-
-            if status_mid:
-                api.edit_message(status_mid, "✅ Транскрибация завершена!")
-        else:
-            api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
+        _process_audio(api, chat_id, audio_path, tmp_dir, status_mid)
 
     except TranscriptionError as exc:
         logger.error("Ошибка транскрибации: %s", exc)
@@ -181,8 +139,97 @@ def _handle_audio(api: MaxBotAPI, chat_id: int, attachment: dict) -> None:
         api.send_message(chat_id, "❌ Произошла ошибка при обработке файла.")
 
     finally:
-        # 8. Очистка временных файлов
         _cleanup_tmp(tmp_dir)
+
+
+def _handle_url(api: MaxBotAPI, chat_id: int, url: str) -> None:
+    """Обработать ссылку на YouTube/Instagram: скачать аудио, транскрибировать."""
+    status_resp = api.send_message(chat_id, "⏳ Скачиваю аудио по ссылке…")
+    status_mid = _extract_message_id(status_resp)
+
+    tmp_dir = tempfile.mkdtemp(prefix="transcriber_url_")
+
+    try:
+        audio_path = download_audio_from_url(url, tmp_dir)
+        logger.info("Аудио скачано из URL: %s → %s", url, audio_path)
+
+        _process_audio(api, chat_id, audio_path, tmp_dir, status_mid)
+
+    except RuntimeError as exc:
+        logger.error("Ошибка скачивания по ссылке: %s", exc)
+        api.send_message(chat_id, f"❌ {exc}")
+
+    except TranscriptionError as exc:
+        logger.error("Ошибка транскрибации: %s", exc)
+        api.send_message(chat_id, f"❌ {exc}")
+
+    except Exception as exc:
+        logger.exception("Непредвиденная ошибка: %s", exc)
+        api.send_message(chat_id, "❌ Произошла ошибка при обработке ссылки.")
+
+    finally:
+        _cleanup_tmp(tmp_dir)
+
+
+def _process_audio(
+    api: MaxBotAPI,
+    chat_id: int,
+    audio_path: str,
+    tmp_dir: str,
+    status_mid: str | None,
+) -> None:
+    """Общая логика: транскрибация → форматирование → отправка результата.
+
+    Вызывается из _handle_audio() и _handle_url().
+    """
+
+    def _report_progress(current: int, total: int) -> None:
+        if status_mid is None:
+            return
+        pct = current * 100 // total
+        api.edit_message(status_mid, f"⏳ Транскрибирую аудио… {pct}%")
+
+    # 1. Подготовка аудио (нарезка на чанки)
+    if status_mid:
+        api.edit_message(status_mid, PREPARING_TEXT)
+
+    # 2. Транскрибируем
+    text = transcribe_audio(audio_path, on_progress=_report_progress)
+
+    if not text.strip():
+        api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
+        return
+
+    # 3. Форматируем текст через Claude
+    if status_mid:
+        api.edit_message(status_mid, "⏳ Форматирую текст…")
+    text = format_text(text)
+
+    # 4. Сохраняем результат в .txt (имя файла совпадает с аудио)
+    audio_stem = os.path.splitext(os.path.basename(audio_path))[0]
+    txt_path = os.path.join(tmp_dir, audio_stem + ".txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    # 5. Обновляем статус — отправка файла
+    if status_mid:
+        api.edit_message(status_mid, "⏳ Отправляю результат…")
+
+    # 6. Сохраняем контекст для кнопки саммари
+    callback_id = uuid.uuid4().hex[:16]
+    _summary_context[callback_id] = (text, audio_stem)
+
+    # 7. Отправляем файл с кнопкой "Получить краткий конспект"
+    summary_button = [[{"type": "callback", "text": "📝 Получить краткий конспект", "payload": callback_id}]]
+    result = api.send_file(chat_id, txt_path, keyboard_buttons=summary_button)
+    if result:
+        logger.info("Транскрипция отправлена в чат %s", chat_id)
+        if len(text) < 4096:
+            api.send_message(chat_id, text)
+        if status_mid:
+            api.edit_message(status_mid, "✅ Транскрибация завершена!")
+    else:
+        api.send_message(chat_id, "❌ Не удалось отправить файл с транскрипцией.")
 
 
 def _handle_callback(api: MaxBotAPI, update: dict) -> None:

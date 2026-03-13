@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# ffmpeg/ffprobe — нарезка аудио на чанки без перекодирования
+# ffmpeg/ffprobe — нарезка аудио на чанки + конвертация аудио из YouTube/Instagram (yt-dlp)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
