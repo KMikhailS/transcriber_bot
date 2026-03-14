@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import tempfile
+import threading
+import time
 import uuid
 
 from bot.database import get_or_create_user, get_pending_payment, get_user_balance, mark_payment_paid, save_payment
@@ -347,6 +349,44 @@ def _handle_sub_topup(api: MaxBotAPI, chat_id: int, user_id: int | None) -> None
         [{"type": "link", "text": "💳 Оплатить", "url": payment_url}],
     ]
     api.send_message_with_keyboard(chat_id, "Нажмите кнопку ниже для оплаты:", buttons)
+
+    if user_id:
+        threading.Thread(
+            target=_poll_payment,
+            args=(api, chat_id, user_id, payment_id, 1000),
+            daemon=True,
+        ).start()
+
+
+def _poll_payment(
+    api: MaxBotAPI, chat_id: int, user_id: int, payment_id: str, amount: int,
+) -> None:
+    """Поллинг статуса платежа каждые 5 сек, до 10 минут."""
+    deadline = time.time() + 600
+    interval = 5
+    while time.time() < deadline:
+        time.sleep(interval)
+        try:
+            status = get_payment_status(payment_id)
+        except Exception as exc:
+            logger.error("Ошибка проверки статуса платежа %s: %s", payment_id, exc)
+            continue
+
+        if status == "succeeded":
+            try:
+                mark_payment_paid(payment_id, user_id, amount)
+                new_balance = get_user_balance(user_id)
+                api.send_message(
+                    chat_id,
+                    f"✅ Оплата прошла успешно! Ваш новый баланс: {new_balance} руб.",
+                )
+            except Exception as exc:
+                logger.error("Ошибка зачисления платежа %s: %s", payment_id, exc)
+            return
+
+        if status == "canceled":
+            api.send_message(chat_id, "❌ Платёж отменён.")
+            return
 
 
 def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) -> None:

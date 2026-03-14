@@ -78,6 +78,13 @@ def init_db() -> None:
         """,
         (now, now),
     )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO subscriptions (code, name, amount, active, createstamp, changestamp)
+        VALUES ('basic', 'Базовая', 1000, 1, ?, ?)
+        """,
+        (now, now),
+    )
     conn.commit()
     logger.info("База данных инициализирована")
 
