@@ -251,8 +251,10 @@ def _handle_callback(api: MaxBotAPI, update: dict) -> None:
         message.get("recipient", {}).get("chat_id")
         or message.get("chat_id")
     )
-    user = update.get("user", {})
+    # В message_callback пользователь может быть в callback.user или message.sender
+    user = callback.get("user") or update.get("user") or message.get("sender") or {}
     user_id = user.get("user_id")
+    logger.info("callback user_id=%s, update keys=%s, callback keys=%s", user_id, list(update.keys()), list(callback.keys()))
 
     if not chat_id:
         logger.warning("Не удалось определить chat_id из callback: %s", json.dumps(update, ensure_ascii=False, default=str))
