@@ -1,23 +1,23 @@
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = "/app/data/transcriber.db"
 
-_conn: sqlite3.Connection | None = None
+_local = threading.local()
 
 
 def _get_conn() -> sqlite3.Connection:
-    """Получить соединение с БД (singleton)."""
-    global _conn
-    if _conn is None:
-        _conn = sqlite3.connect(DB_PATH)
-        _conn.row_factory = sqlite3.Row
-        _conn.execute("PRAGMA journal_mode=WAL")
-        _conn.execute("PRAGMA foreign_keys=ON")
-    return _conn
+    """Получить соединение с БД (per-thread)."""
+    if not hasattr(_local, "conn") or _local.conn is None:
+        _local.conn = sqlite3.connect(DB_PATH)
+        _local.conn.row_factory = sqlite3.Row
+        _local.conn.execute("PRAGMA journal_mode=WAL")
+        _local.conn.execute("PRAGMA foreign_keys=ON")
+    return _local.conn
 
 
 def init_db() -> None:
