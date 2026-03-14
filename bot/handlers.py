@@ -23,19 +23,19 @@ _summary_context: dict[str, tuple[str, str]] = {}
 WELCOME_TEXT = (
     "👋 Привет! Я Стенограф — бот для расшифровки аудио в текст.\n\n"
     "Отправь мне аудиофайл (mp3, wav, ogg, m4a и др.) "
-    "или ссылку на YouTube / Instagram видео, "
+    "или ссылку на YouTube / Instagram / VK / OK.ru видео, "
     "и я верну текстовый файл с расшифровкой.\n\n"
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
-    "Ссылки: YouTube, Instagram (Reels, посты с видео)."
+    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, OK.ru."
 )
 
 DOWNLOADING_TEXT = "⏳ Скачиваю аудио…"
 PREPARING_TEXT = "⏳ Подготавливаю аудио…"
 
 INVALID_FILE_TEXT = (
-    "❌ Пожалуйста, отправьте аудиофайл или ссылку на YouTube / Instagram видео.\n"
+    "❌ Пожалуйста, отправьте аудиофайл или ссылку на YouTube / Instagram / VK / OK.ru видео.\n"
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
-    "Ссылки: YouTube, Instagram (Reels, посты с видео)."
+    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, OK.ru."
 )
 
 

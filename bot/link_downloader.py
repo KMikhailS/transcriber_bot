@@ -12,14 +12,20 @@ _YOUTUBE_PATTERN = re.compile(
 _INSTAGRAM_PATTERN = re.compile(
     r"https?://(?:www\.)?instagram\.com/(?:reel|p|tv)/[^\s]+",
 )
+_VK_PATTERN = re.compile(
+    r"https?://(?:www\.)?(?:vk\.com|vk\.ru|vkvideo\.ru)/(?:video|clip)-?\d+_\d+[^\s]*",
+)
+_OK_PATTERN = re.compile(
+    r"https?://(?:www\.)?ok\.ru/video(?:embed)?/\d+[^\s]*",
+)
 
 
 def extract_media_url(text: str) -> str | None:
-    """Извлечь YouTube или Instagram URL из текста.
+    """Извлечь YouTube, Instagram или VK URL из текста.
 
     Возвращает первый найденный URL или None.
     """
-    for pattern in (_YOUTUBE_PATTERN, _INSTAGRAM_PATTERN):
+    for pattern in (_YOUTUBE_PATTERN, _INSTAGRAM_PATTERN, _VK_PATTERN, _OK_PATTERN):
         match = pattern.search(text)
         if match:
             return match.group(0)
