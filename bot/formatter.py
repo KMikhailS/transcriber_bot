@@ -11,7 +11,8 @@ _client = OpenAI(
     api_key=OPENROUTER_API_KEY,
 )
 
-_MODEL = "anthropic/claude-sonnet-4.6"
+# _MODEL = "anthropic/claude-sonnet-4.6"
+_MODEL = "anthropic/claude-haiku-4.5"
 
 _SYSTEM_PROMPT = (
     "You are a text formatting assistant. You receive a raw speech-to-text transcription "

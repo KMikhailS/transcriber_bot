@@ -23,19 +23,19 @@ _summary_context: dict[str, tuple[str, str]] = {}
 WELCOME_TEXT = (
     "👋 Привет! Я Стенограф — бот для расшифровки аудио в текст.\n\n"
     "Отправь мне аудиофайл (mp3, wav, ogg, m4a и др.) "
-    "или ссылку на YouTube / Instagram / VK / OK.ru видео, "
+    "или ссылку на YouTube / Instagram / VK / Одноклассники видео, "
     "и я верну текстовый файл с расшифровкой.\n\n"
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
-    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, OK.ru."
+    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, Одноклассники."
 )
 
 DOWNLOADING_TEXT = "⏳ Скачиваю аудио…"
 PREPARING_TEXT = "⏳ Подготавливаю аудио…"
 
 INVALID_FILE_TEXT = (
-    "❌ Пожалуйста, отправьте аудиофайл или ссылку на YouTube / Instagram / VK / OK.ru видео.\n"
+    "❌ Пожалуйста, отправьте аудиофайл или ссылку на YouTube / Instagram / VK / Одноклассники видео.\n"
     "Поддерживаемые форматы: mp3, mp4, m4a, wav, webm, ogg, mpeg, mpga.\n"
-    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, OK.ru."
+    "Ссылки: YouTube, Instagram (Reels, посты с видео), VK Видео, Одноклассники."
 )
 
 
@@ -363,7 +363,7 @@ def _poll_payment(
                 new_balance = get_user_balance(user_id)
                 api.send_message(
                     chat_id,
-                    f"✅ Оплата прошла успешно! Ваш новый баланс: {new_balance} руб.",
+                    f"✅ Оплата прошла успешно!\nВаш баланс: {new_balance} руб.",
                 )
             except Exception as exc:
                 logger.error("Ошибка зачисления платежа %s: %s", payment_id, exc)
@@ -376,7 +376,7 @@ def _poll_payment(
 
 def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) -> None:
     """Создать саммари и отправить результат."""
-    status_resp = api.send_message(chat_id, "⏳ Создаю саммари…")
+    status_resp = api.send_message(chat_id, "⏳ Создаю краткий отчёт…")
     status_mid = _extract_message_id(status_resp)
 
     tmp_dir = tempfile.mkdtemp(prefix="summary_")
@@ -384,7 +384,7 @@ def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) ->
     try:
         summary = summarize_text(text)
         if not summary:
-            api.send_message(chat_id, "❌ Не удалось создать саммари.")
+            api.send_message(chat_id, "❌ Не удалось создать краткий отчёт.")
             return
 
         # Сохраняем саммари в файл
@@ -395,7 +395,7 @@ def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) ->
 
         # Обновляем статус
         if status_mid:
-            api.edit_message(status_mid, "⏳ Отправляю саммари…")
+            api.edit_message(status_mid, "⏳ Отправляю краткий отчёт…")
 
         # Отправляем файл
         result = api.send_file(chat_id, summary_path)
@@ -405,7 +405,7 @@ def _handle_summary(api: MaxBotAPI, chat_id: int, text: str, audio_stem: str) ->
             if len(summary) < 4096:
                 api.send_message(chat_id, summary)
             if status_mid:
-                api.edit_message(status_mid, "✅ Саммари готово!")
+                api.edit_message(status_mid, "✅ Краткий отчёт готов!")
         else:
             api.send_message(chat_id, "❌ Не удалось отправить файл с саммари.")
 
