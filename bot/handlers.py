@@ -203,10 +203,10 @@ def _process_audio(
         api.send_message(chat_id, "⚠️ Не удалось распознать речь в аудио.")
         return
 
-    # 3. Форматируем текст через Claude
-    if status_mid:
-        api.edit_message(status_mid, "⏳ Форматирую текст…")
-    text = format_text(text)
+    # 3. Форматируем текст через Claude временно отключил
+    # if status_mid:
+    #     api.edit_message(status_mid, "⏳ Форматирую текст…")
+    # text = format_text(text)
 
     # 4. Сохраняем результат в .txt (имя файла совпадает с аудио)
     audio_stem = os.path.splitext(os.path.basename(audio_path))[0]
