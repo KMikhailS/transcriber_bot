@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 
-from bot.database import get_or_create_user, get_pending_payment, get_user_balance, mark_payment_paid, save_payment
+from bot.database import get_or_create_user, get_user_balance, mark_payment_paid, save_payment
 from bot.formatter import format_text
 from bot.link_downloader import download_audio_from_url, extract_media_url
 from bot.max_api import MaxBotAPI
@@ -295,21 +295,6 @@ def _handle_callback(api: MaxBotAPI, update: dict) -> None:
 
 def _handle_sub_info(api: MaxBotAPI, chat_id: int, user_id: int | None) -> None:
     """Показать баланс пользователя и кнопки оплаты."""
-    # Проверяем pending-платёж перед показом баланса
-    if user_id:
-        pending = get_pending_payment(user_id)
-        if pending:
-            payment_id, amount = pending
-            status = get_payment_status(payment_id)
-            if status == "succeeded":
-                try:
-                    mark_payment_paid(payment_id, user_id, amount)
-                    api.send_message(chat_id, f"✅ Оплата на {amount} руб. прошла успешно! Баланс пополнен.")
-                except Exception as exc:
-                    logger.error("Ошибка зачисления платежа %s: %s", payment_id, exc)
-            elif status == "canceled":
-                logger.info("Платёж %s отменён", payment_id)
-
     balance = get_user_balance(user_id) if user_id else 0
     text = f"💰 Ваш текущий баланс: {balance} руб."
     buttons = [
